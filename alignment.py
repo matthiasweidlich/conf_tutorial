@@ -81,7 +81,7 @@ class Astar (Alignment):
             current_node.marking_vector = numpy.array(init_mark_vector[:])
             current_node.observed_trace_remain = trace
             open_list.append([current_node.total_cost, current_node])
-            current_node.Heuristic_to_Final()
+            current_node.Heuristic_to_Final(elements_tot)
 
             #Iterating until open_list has an element
             while len(open_list) > 0:
@@ -158,8 +158,8 @@ class Astar (Alignment):
         for i in range(len(trace)):
             e = self.__elements(trace[i], "Sync", i)
             for node in elements_tot:
-                if (trace[i] == node.trans_id):
-                    if ((node.trans_type == 'log' and node.index != i) or (node.trans_type == 'Sync')):
+                if trace[i] == node.trans_id:
+                    if (node.trans_type == 'log' and node.index != i) or (node.trans_type == 'Sync'):
                         pass
                     else:
                         e.place_pre = e.place_pre + node.place_pre
@@ -232,9 +232,9 @@ class Astar (Alignment):
         for i in range(len(incident_matrix)):
             for j in range(len(incident_matrix[0])):
                 index = str(elements_tot[j].index)
-                if (incident_matrix[i][j] == 1):
+                if incident_matrix[i][j] == 1:
                     dot.edge(str(elements_tot[j].trans_id + "-" + elements_tot[j].trans_type + index), str(places[i]))
-                elif (incident_matrix[i][j] == -1):
+                elif incident_matrix[i][j] == -1:
                     dot.edge(str(places[i]), str(elements_tot[j].trans_id + "-" + elements_tot[j].trans_type + index))
         # Graphviz must be installed in order to save output in pdf format
         f = open("./sync_product.dot", "w")
@@ -354,7 +354,7 @@ class Node():
         # Heuristic evaluation of active transitions
         for i in self.active_transition:
             # Computing the distance of an active transition to the final marking (a place in case of WF net)
-            self.Heuristic_to_Final()
+            self.Heuristic_to_Final(elements_tot)
 
             # ------------------------Movements-------------------
             # --Synchronous
@@ -372,7 +372,7 @@ class Node():
                 node_child.alignment_Up_to = self.alignment_Up_to + [
                     (self.observed_trace_remain[0], elements_tot[i].trans_id)]
                 # node_child.cost_to_final_marking = d
-                node_child.Heuristic_to_Final()
+                node_child.Heuristic_to_Final(elements_tot)
                 node_child.cost_from_init_marking = 1 * sum(
                     [1 if ((x[0] != '-') and (x[1] != '-' and 'tau' not in x[1])) else 0 for x in
                      node_child.alignment_Up_to]) / float(
@@ -397,7 +397,7 @@ class Node():
                     node_child.observed_trace_remain = self.observed_trace_remain[:]
                     node_child.alignment_Up_to = self.alignment_Up_to + [('-', elements_tot[i].trans_id)]
                     # node_child.cost_to_final_marking = d
-                    node_child.Heuristic_to_Final()
+                    node_child.Heuristic_to_Final(elements_tot)
                     node_child.cost_from_init_marking = 1 * sum(
                         [1 if ((x[0] != '-') and (x[1] != '-' and 'tau' not in x[1])) else 0 for x in
                          node_child.alignment_Up_to]) / float(
@@ -421,7 +421,7 @@ class Node():
                 node_child.observed_trace_remain = self.observed_trace_remain[1:]
                 node_child.alignment_Up_to = self.alignment_Up_to + [(self.observed_trace_remain[0], '-')]
                 # node_child.cost_to_final_marking = self.cost_to_final_marking
-                node_child.Heuristic_to_Final()
+                node_child.Heuristic_to_Final(elements_tot)
                 node_child.cost_from_init_marking = 1 * sum(
                     [1 if (x[0] != '-') and (x[1] != '-' and 'tau' not in x[1]) else 0 for x in
                      node_child.alignment_Up_to]) / float(
@@ -434,11 +434,15 @@ class Node():
                 self.Add_node(v.open_list, v.closed_list, node_child, ',move in log,')
 
     # Heuristic that estimates from the current node to the final marking how many transitions must be fired!
-    def Heuristic_to_Final(self):
+    def Heuristic_to_Final(self, elements_tot):
         b = numpy.array(v.final_mark_vector) - numpy.array(self.marking_vector)
         x = numpy.linalg.lstsq(v.Incident_matrix, b, rcond=None)[0]
         x[x > 0] = 1
         x[x <= 0] = 0
+
+        for e in elements_tot:
+            if 'tau' in e.trans_id:
+                x[e.index] = 0
 
         if numpy.sum(x) > 0:
             self.cost_to_final_marking = 1 / numpy.sum(x)
