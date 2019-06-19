@@ -1,28 +1,17 @@
 import numpy
-import heapq
-import copy
-import platform
-import sys
-import os
+import variables as v
 import json
+import heapq
 import tqdm
 import graphviz as gr
-import pmlab_lite.alignments.Variables as v
-import pmlab_lite.pn.pn as pn
-import pmlab_lite.helper.io.pnml as pnml
-import pmlab_lite.helper.io.xes as xes
-
-
+import xml.etree.ElementTree as et
 
 class Alignment:
     def __init__(self):
-        self.alignment_move=[]
-        self.move_in_log=[]
-        self.move_in_model=[]
-        self.fitness=[]
-
-
-
+        self.alignment_move = []
+        self.move_in_log = []
+        self.move_in_model = []
+        self.fitness = []
 
 class Astar (Alignment):
 
@@ -30,19 +19,29 @@ class Astar (Alignment):
         Alignment.__init__(self)
         self.solutions = []
 
+    # Creating Incidence matrix
+    def Incidence_Matrix(self, net):
+        # Creating an empty matrix
+        incidnet_matrix = numpy.zeros((len(net.places.keys()), len(net.transitions.keys())), dtype=int)
+
+        for keyT in net.transitions.keys():
+            for keyP in net.places.keys():
+                if (net.transitions[keyT][0], net.places[keyP]) in net.edges:
+                    col_index = list(net.transitions.values()).index(net.transitions[keyT])
+                    row_index = list(net.places.values()).index(net.places[keyP])
+                    incidnet_matrix[row_index][col_index] = 1
+                elif (net.places[keyP], net.transitions[keyT][0]) in net.edges:
+                    col_index = list(net.transitions.values()).index(net.transitions[keyT])
+                    row_index = list(net.places.values()).index(net.places[keyP])
+                    incidnet_matrix[row_index][col_index] = -1
+
+        return incidnet_matrix
 
     # A-star algorithm
-    def Astar_Exe(self, model_path, log_path, destination_path = os.getcwd(), final_marking=['end'], no_of_solutions=1):
-        #:param model_path: Address to the PNML file
-        #:param log_path:  Address to the log file
-        #:param destination_path: Destination address to write some files
-        #:param final_marking: Final marking of the Petri net, like 'p8'
-        #:return:
-
-
+    def Astar_Exe(self, net, total_trace, index_place_start, index_place_end, no_of_solutions=1):
         # Reading the model
-        total_trace, net, index_place_end, index_place_start, Incident_matrix_net = self.__Reading_IO(model_path, log_path)
-
+        #total_trace, net, index_place_end, index_place_start, Incident_matrix_net = self.__Reading_IO(model_path, log_path)
+        Incident_matrix_net = self.Incidence_Matrix(net)
 
         #All the solutions, i.e. alignments
         v.solutions = dict()
@@ -68,11 +67,8 @@ class Astar (Alignment):
             v.init_mark_vector = init_mark_vector
             v.final_mark_vector = final_mark_vector
 
-
-
             # ---Initializing variables
             v.closed_list = closed_list = []
-            #v.solutions = solutions = []
             v.open_list = open_list = []
             self.solutions=[]
             self.fitness=[]
@@ -87,9 +83,8 @@ class Astar (Alignment):
             open_list.append([current_node.total_cost, current_node])
             current_node.Heuristic_to_Final()
 
-
             #Iterating until open_list has an element
-            while (len(open_list) > 0):
+            while len(open_list) > 0:
                 # Sorting openlist
                 heapq._heapify_max(open_list)
 
@@ -100,107 +95,23 @@ class Astar (Alignment):
                 # Investigating the current node
                 current_node.Investigate(Incident_matrix, elements_tot, places, final_marking)
 
-
                 # Check weather the node if a solution or no:
                 if (numpy.array_equal(current_node.marking_vector, final_mark_vector)):
-                    #solutions.append(current_node)
                     self.solutions.append(current_node)
                     self.__Fitness()
                     self.__Move_alignment()
                     self.__Move_in_log()
                     self.__Move_in_model()
                     v.solutions[key]=[{'alignment': self.alignment_move, 'fitness': self.fitness}]
-                    #print("Solution was found:", key)
                     if (len(self.solutions) >= no_of_solutions):
                         break
 
+        return v.solutions
+        # Write the output as a Json file
+        #with open('Results.json', 'w') as outfile:
+        #    json.dump(v.solutions, outfile)
+        #    print("Done!")
 
-        #Write the output as a Json file
-        with open('Results.json', 'w') as outfile:
-            json.dump(v.solutions, outfile)
-            print("Done!")
-
-            # return trans, places, Incident_matrix , initial_place_marking, init_mark_vector, candidate_nodes, total_trace, distance_matrix, vertices
-
-            #return solutions
-
-    #########################################################################################
-    # Reading input eventlog and model file (private method using "__")
-    def __Reading_IO(self,model, log):
-        '''
-        :param model: direction to a PNML file
-        :param log:  direction to a XES file
-        :return: traces, net, incidence_matrix
-        '''
-
-        # Reading log from XES file
-        def Read(log):
-            if(log.endswith(".xes")):
-                traces = dict()
-                obj = xes.import_from_xes(log)
-                for case in obj.get_traces():
-                    for c in case:
-                        if (c.get_case_id() not in traces):
-                            traces[c.get_case_id()] = [c.get_activity_name()]
-                        else:
-                            traces[c.get_case_id()].append(c.get_activity_name())
-
-                            # print(c.get_activity_name(), c.get_case_id())
-            # Reading log from a text file!
-            elif (log.endswith(".txt")):
-                f = open(log)
-                traces=dict()
-                count=0
-                for line in f:
-                    #trace = f.read()
-                    trace = line.strip('\n').split(' ')
-                    # for i in range(len(trace)):
-                    # trace[i] = "T_" + trace[i]
-                    traces[count]=trace
-                    count+=1
-
-            return traces
-
-        # Creating Incidence matrix
-        def Incidence_Matrix(net):
-            # Creating an empty matrix
-            incidnet_matrix = numpy.zeros((len(net.places.keys()), len(net.transitions.keys())), dtype=int)
-
-            for keyT in net.transitions.keys():
-                for keyP in net.places.keys():
-                    if (net.transitions[keyT][0], net.places[keyP]) in net.edges:
-                        col_index = list(net.transitions.values()).index(net.transitions[keyT])
-                        row_index = list(net.places.values()).index(net.places[keyP])
-                        incidnet_matrix[row_index][col_index] = 1
-                    elif (net.places[keyP], net.transitions[keyT][0]) in net.edges:
-                        col_index = list(net.transitions.values()).index(net.transitions[keyT])
-                        row_index = list(net.places.values()).index(net.places[keyP])
-                        incidnet_matrix[row_index][col_index] = -1
-
-            return incidnet_matrix
-
-        traces = Read(log)
-
-        net = pn.PetriNet()
-        pnml.load(net, model)
-        incidence_matrix = Incidence_Matrix(net)
-
-        # Finding the final marking
-        # Determining which row has 0 or positive elements (that is the final marking place)
-        index_place_end = numpy.where((incidence_matrix >= 0).all(axis=1))
-        # index_place_end=numpy.where(numpy.sum(incidence_matrix, axis=1) == 1)
-        if (len(index_place_end) > 1):
-            raise ValueError('place identifier has to be unique')
-
-        # Finding the initial marking markin
-        # Determining which row has 0 or negative elements (that is the initial marking place)
-        index_place_start = numpy.where((incidence_matrix <= 0).all(axis=1))
-        # index_place_start = numpy.where(numpy.sum(incidence_matrix, axis=1) <= -1)
-        if (len(index_place_end) > 1):
-            raise ValueError('place identifier has to be unique')
-
-
-        return traces, net, index_place_end[0][0], index_place_start[0][0], incidence_matrix
 
     ######################################################################################
     # Crating synchronous product of a model an log (private using "__")
@@ -214,7 +125,6 @@ class Astar (Alignment):
 
     def __Synchronous_Product(self, net, trace):
         '''
-
         :param net: is an object from Petri net class
         :param trace: an input trace, for which sych product will be created
         :return: sync product
@@ -226,9 +136,9 @@ class Astar (Alignment):
         for i in range(len(t_model)):
             e = self.__elements(t_model[i], "model", i)
             for pair in net.edges:
-                if (net.transitions[t_model[i]][0] == pair[0]):
+                if net.transitions[t_model[i]][0] == pair[0]:
                     e.place_post.append(pair[1])
-                elif (net.transitions[t_model[i]][0] == pair[1]):
+                elif net.transitions[t_model[i]][0] == pair[1]:
                     e.place_pre.append(pair[0])
             elements_tot.append(e)
 
@@ -261,18 +171,15 @@ class Astar (Alignment):
         # places=set()
         for e in elements_tot:
             for p in e.place_pre:
-                if (p not in places):
+                if p not in places:
                     places.append(p)
             for p in e.place_post:
-                if (p not in places):
+                if p not in places:
                     places.append(p)
         # places = list(places)
 
-
         index_place_start_log = places.index(initial_log_place)
         index_place_end_log = places.index(final_log_place)
-
-
 
         # Initializing and filling in the matrix
         incidence_matrix = numpy.zeros((len(places), len(elements_tot),), dtype=int)
@@ -284,15 +191,57 @@ class Astar (Alignment):
                 row_ind = places.index(p)
                 incidence_matrix[row_ind][i] = 1
 
-        # Plotting synchronous product model
-        #Drawing_Model(elements_tot, places, incidence_matrix)
         #Storing variables as a Private ones (using "__")
         self.__elements_tot=elements_tot
         self.__places=places
         self.__incidence_matrix=incidence_matrix
+        # Plotting synchronous product model
+        self.Drawing_Model()
 
         return elements_tot, places, index_place_start_log, index_place_end_log, incidence_matrix
-#####################################################################################################
+
+    def Drawing_Model(self):
+        places=self.__places
+        incident_matrix=self.__incidence_matrix
+        elements_tot=self.__elements_tot
+        # path=V.destination_path
+
+        # Now attempting to create a graph
+
+        dot = gr.Digraph()
+
+        for i in range(len(places)):
+            dot.node(str(places[i]), shape="circle")
+
+        # Here during the initializing the transition nodes of the graph, if we encountered the transition which is appeared in the net_moves,
+        # we highlight it and also assign it a moves number.
+        # Similarly transitions which are asynch moves or Skipped, will receive another colors
+        for e in elements_tot:
+            index = str(e.index)
+            if e.trans_type == 'model':
+                dot.node(str(e.trans_id + "-" + e.trans_type + index), shape="rect", style='filled', color="red")
+
+            elif e.trans_type == 'log':
+                dot.node(str(e.trans_id + "-" + e.trans_type + index), shape="rect", style='filled', color="green")
+            elif e.trans_type == 'Sync':
+                dot.node(str(e.trans_id + "-" + e.trans_type + index), shape="rect", style='filled', color="blue")
+
+                # else:
+                # dot.node(transitions[i], shape="rect")
+
+        for i in range(len(incident_matrix)):
+            for j in range(len(incident_matrix[0])):
+                index = str(elements_tot[j].index)
+                if (incident_matrix[i][j] == 1):
+                    dot.edge(str(elements_tot[j].trans_id + "-" + elements_tot[j].trans_type + index), str(places[i]))
+                elif (incident_matrix[i][j] == -1):
+                    dot.edge(str(places[i]), str(elements_tot[j].trans_id + "-" + elements_tot[j].trans_type + index))
+        # Graphviz must be installed in order to save output in pdf format
+        print ("the net move is figured")
+        f = open("./sync_product.dot", "w")
+        dot.render("sync_product.png")
+        f.write(dot.source)
+
     def __Fitness(self):
         for sol in self.solutions:
             u = sol.alignment_Up_to
@@ -330,13 +279,10 @@ class Astar (Alignment):
             index = str(e.index)
             if e.trans_type == 'model':
                 dot.node(str(e.trans_id + "-" + e.trans_type + index), shape="rect", style='filled', color="red")
-
             elif e.trans_type == 'log':
                 dot.node(str(e.trans_id + "-" + e.trans_type + index), shape="rect", style='filled', color="green")
             elif e.trans_type == 'Sync':
                 dot.node(str(e.trans_id + "-" + e.trans_type + index), shape="rect", style='filled', color="blue")
-
-
                 # else:
                 # dot.node(transitions[i], shape="rect")
 
@@ -353,20 +299,12 @@ class Astar (Alignment):
                     dot.edge(str(places[i]), str(elements_tot[j].trans_id + "-" + elements_tot[j].trans_type + index))
 
                     # Graphviz must be installed in order to save output in pdf format
-        if platform.system() == "Windows":
-            os.environ["PATH"] += os.pathsep + 'C:/Program Files (x86)/Graphviz2.38/bin/'
-        elif platform.system() == "Linux":
-            if ('graphviz' not in sys.modules):
-                os.system('sudo apt-get install graphviz')
 
         print ("the net move is figured")
-        f = open(os.getcwd() + "/Graph_net_moves_color.dot", "w")
-        dot.render("plot.png")
+        f = open("./Graph_net_moves_color.dot", "w")
+#        dot.render("plot.png")
         f.write(dot.source)
 
-########################################################################################################
-#######################################################################################################
-#This is a class that creates the state space of SPN (called from Astar)
 class Node():
     def __init__(self):
         #Astar.__init__(self)
@@ -447,17 +385,14 @@ class Node():
 
                 self.Add_node(v.open_list, v.closed_list, node_child, ",synch,")
 
-
-
             # Move in model
-            elif (elements_tot[i].trans_type == "model"):
-                if (numpy.all(self.marking_vector + incidence_matrix[:, i] >= 0)):
+            elif elements_tot[i].trans_type == "model":
+                if numpy.all(self.marking_vector + incidence_matrix[:, i] >= 0):
 
                     # Creating a new node
                     node_child = Node()
                     # Updating the current marking for that node by firing trans[i]
                     node_child.marking_vector = self.marking_vector + incidence_matrix[:, i]
-                    #print("Marking of child in move in model:", self.marking_vector + incidence_matrix[:, i])
                     node_child.parent_node = self
 
                     # Updating the remaining observed trace
@@ -473,22 +408,15 @@ class Node():
                     # Updating active transitions for the child node
                     node_child.total_cost = node_child.cost_to_final_marking + node_child.cost_from_init_marking
 
-
                     # Checking whether it is in the closed list
-
                     self.Add_node(v.open_list, v.closed_list, node_child, ",move in model,")
 
-
-
             # Move in log
-            elif (elements_tot[i].trans_type == "log"):
-
-
+            elif elements_tot[i].trans_type == "log":
                 # Creating a new node
                 node_child = Node()
                 # Updating the current marking for that node
                 node_child.marking_vector = self.marking_vector + incidence_matrix[:, i]
-                #print("Marking of child in move in model:", self.marking_vector + incidence_matrix[:, i])
                 node_child.parent_node = self
 
                 # Updating the remaining observed trace
@@ -504,53 +432,39 @@ class Node():
                 # Updating active transitions for the child node
                 node_child.total_cost = node_child.cost_to_final_marking + node_child.cost_from_init_marking
 
-
                 # Checking whether it is in the closed list
                 self.Add_node(v.open_list, v.closed_list, node_child, ',move in log,')
 
-
-
-
-                    #############################################################################################################
-
     # Heuristic that estimates from the current node to the final marking how many transitions must be fired!
     def Heuristic_to_Final(self):
-
         b = numpy.array(v.final_mark_vector) - numpy.array(self.marking_vector)
         x = numpy.linalg.lstsq(v.Incident_matrix, b, rcond=None)[0]
         x[x > 0] = 1
         x[x <= 0] = 0
 
         self.cost_to_final_marking = 1 / numpy.sum(x)
-    #-----------------
-        # Deciding whether to add a now node to the open list
+
+    # Deciding whether to add a now node to the open list
     def Add_node(self, open_list, closed_list, node_child, id):
-            # Checking whether it is in the closed list
-
-            ind = [k for k in range(len(closed_list)) if
-                   numpy.array_equal(node_child.marking_vector, closed_list[k][1].marking_vector)]
-
-            if (len(ind) > 0):
-                pass
-
-
-            # checking whether it is in the open list (update if we found it)
+        # Checking whether it is in the closed list
+        ind = [k for k in range(len(closed_list)) if
+               numpy.array_equal(node_child.marking_vector, closed_list[k][1].marking_vector)]
+        if len(ind) > 0:
+            pass
+        # checking whether it is in the open list (update if we found it)
+        else:
+            # ind is a index list like [12,34,10]
+            ind = [k for k in range(len(open_list)) if
+                   numpy.array_equal(node_child.marking_vector, open_list[k][1].marking_vector)]
+            if ind:
+                for k in ind:
+                    if open_list[k][1].cost_from_init_marking < node_child.cost_from_init_marking:
+                        open_list[k] = [node_child.total_cost, node_child]
+                    else:
+                        continue
             else:
+                open_list.append([node_child.total_cost, node_child])
 
-                # ind is a index list like [12,34,10]
-                ind = [k for k in range(len(open_list)) if
-                       numpy.array_equal(node_child.marking_vector, open_list[k][1].marking_vector)]
-
-                if (ind):
-                    for k in ind:
-                        if (open_list[k][1].cost_from_init_marking < node_child.cost_from_init_marking):
-                            open_list[k] = [node_child.total_cost, node_child]
-                        else:
-                            continue
-                else:
-                    open_list.append([node_child.total_cost, node_child])
-
-                    ###########################################################
 
 
 
