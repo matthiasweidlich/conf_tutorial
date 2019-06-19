@@ -102,19 +102,12 @@ class Astar (Alignment):
                     self.__Move_alignment()
                     self.__Move_in_log()
                     self.__Move_in_model()
-                    v.solutions[key]=[{'alignment': self.alignment_move, 'fitness': self.fitness}]
-                    if (len(self.solutions) >= no_of_solutions):
+#                    v.solutions[key]=[{'alignment': self.alignment_move, 'fitness': self.fitness}]
+                    v.solutions[key] = self.alignment_move
+                    if len(self.solutions) >= no_of_solutions:
                         break
-
         return v.solutions
-        # Write the output as a Json file
-        #with open('Results.json', 'w') as outfile:
-        #    json.dump(v.solutions, outfile)
-        #    print("Done!")
 
-
-    ######################################################################################
-    # Crating synchronous product of a model an log (private using "__")
     class __elements:
         def __init__(self, id, type, index):
             self.place_pre = []
@@ -205,7 +198,6 @@ class Astar (Alignment):
         incident_matrix=self.__incidence_matrix
         elements_tot=self.__elements_tot
         # path=V.destination_path
-
         # Now attempting to create a graph
 
         dot = gr.Digraph()
@@ -220,14 +212,10 @@ class Astar (Alignment):
             index = str(e.index)
             if e.trans_type == 'model':
                 dot.node(str(e.trans_id + "-" + e.trans_type + index), shape="rect", style='filled', color="red")
-
             elif e.trans_type == 'log':
                 dot.node(str(e.trans_id + "-" + e.trans_type + index), shape="rect", style='filled', color="green")
             elif e.trans_type == 'Sync':
                 dot.node(str(e.trans_id + "-" + e.trans_type + index), shape="rect", style='filled', color="blue")
-
-                # else:
-                # dot.node(transitions[i], shape="rect")
 
         for i in range(len(incident_matrix)):
             for j in range(len(incident_matrix[0])):
@@ -236,15 +224,14 @@ class Astar (Alignment):
                     dot.edge(str(elements_tot[j].trans_id + "-" + elements_tot[j].trans_type + index), str(places[i]))
                 elif incident_matrix[i][j] == -1:
                     dot.edge(str(places[i]), str(elements_tot[j].trans_id + "-" + elements_tot[j].trans_type + index))
-        # Graphviz must be installed in order to save output in pdf format
         f = open("./sync_product.dot", "w")
-        dot.render("sync_product.png")
+        #dot.render("sync_product.png")
         f.write(dot.source)
 
     def __Fitness(self):
         for sol in self.solutions:
             u = sol.alignment_Up_to
-            self.fitness.append(round(len([e for e in u if (e[0] != '-' and e[1] != '-' and 'tau' not in e[1])]) / len(u), 3))
+            self.fitness.append(round(len([e for e in u if ((e[0] != '-' and e[1] != '-') or 'tau' in e[1])]) / len(u), 3))
     def __Move_alignment(self):
         for sol in self.solutions:
             u=sol.alignment_Up_to
@@ -257,52 +244,6 @@ class Astar (Alignment):
         for sol in self.solutions:
             u=sol.alignment_Up_to
             self.move_in_log .append([e[0] for e in u if e[0] != '-'])
-    ################################################################################################
-    # This method plots the synchronous products
-    def Drawing_Model(self):
-        places=self.__places
-        incident_matrix=self.__incidence_matrix
-        elements_tot=self.__elements_tot
-        # path=V.destination_path
-
-        # Now attempting to create a graph
-
-        dot = gr.Digraph()
-
-        for i in range(len(places)):
-            dot.node(str(places[i]), shape="circle")
-
-        # Here during the initializing the transition nodes of the graph, if we encountered the transition which is appeared in the net_moves,
-        # we highlight it and also assign it a moves number.
-        # Similarly transitions which are asynch moves or Skipped, will receive another colors
-        for e in elements_tot:
-            index = str(e.index)
-            if e.trans_type == 'model':
-                dot.node(str(e.trans_id + "-" + e.trans_type + index), shape="rect", style='filled', color="red")
-            elif e.trans_type == 'log':
-                dot.node(str(e.trans_id + "-" + e.trans_type + index), shape="rect", style='filled', color="green")
-            elif e.trans_type == 'Sync':
-                dot.node(str(e.trans_id + "-" + e.trans_type + index), shape="rect", style='filled', color="blue")
-                # else:
-                # dot.node(transitions[i], shape="rect")
-
-        for i in range(len(incident_matrix)):
-            for j in range(len(incident_matrix[0])):
-                index = str(elements_tot[j].index)
-                if (incident_matrix[i][j] == 1):
-
-                    dot.edge(str(elements_tot[j].trans_id + "-" + elements_tot[j].trans_type + index), str(places[i]))
-
-
-                elif (incident_matrix[i][j] == -1):
-
-                    dot.edge(str(places[i]), str(elements_tot[j].trans_id + "-" + elements_tot[j].trans_type + index))
-
-                    # Graphviz must be installed in order to save output in pdf format
-
-        f = open("./Graph_net_moves_color.dot", "w")
-#        dot.render("plot.png")
-        f.write(dot.source)
 
 class Node():
     def __init__(self):
@@ -314,8 +255,10 @@ class Node():
         self.parent_node = ''
         self.observed_trace_remain = []
         self.alignment_Up_to = []  # It is of the form ((t1,t1),(t2,-),(-,t3))
-        self.cost_from_init_marking = sum([0 if (x[0] and x[1]) != '-' else 1 for x in
-                                           self.alignment_Up_to])  # Computing steps weight in an alignment
+        self.cost_from_init_marking = 1 * sum(
+                    [1 if ((x[0] != '-' and x[0] != '-') or ('tau' in x[1])) else 0 for x in
+                     self.alignment_Up_to]) / float(max(len(self.alignment_Up_to), 1))
+
         self.cost_to_final_marking = 1000
         self.total_cost = self.cost_to_final_marking + self.cost_from_init_marking
 
@@ -327,8 +270,8 @@ class Node():
         # Finding active transitions
         # Looping over transitions of the model to see which one is active given the marking of that node
         for i in range(0, incidence_matrix.shape[1]):
-            if (numpy.all((incidence_matrix[:, i] + self.marking_vector) >= 0)):
-                if (i not in self.active_transition):
+            if numpy.all((incidence_matrix[:, i] + self.marking_vector) >= 0):
+                if i not in self.active_transition:
                     self.active_transition.append(i)
 
 
@@ -350,7 +293,6 @@ class Node():
         # Finding active transitions
         self.Find_active_transition(incidence_matrix, elements_tot)
 
-
         # Heuristic evaluation of active transitions
         for i in self.active_transition:
             # Computing the distance of an active transition to the final marking (a place in case of WF net)
@@ -358,7 +300,7 @@ class Node():
 
             # ------------------------Movements-------------------
             # --Synchronous
-            if (elements_tot[i].trans_type == "Sync"):
+            if elements_tot[i].trans_type == "Sync":
 
                 # Creating a new node
                 node_child = Node()
@@ -374,7 +316,7 @@ class Node():
                 # node_child.cost_to_final_marking = d
                 node_child.Heuristic_to_Final(elements_tot)
                 node_child.cost_from_init_marking = 1 * sum(
-                    [1 if ((x[0] != '-') and (x[1] != '-' and 'tau' not in x[1])) else 0 for x in
+                    [1 if ((x[0] != '-' and x[0] != '-') or ('tau' in x[1])) else 0 for x in
                      node_child.alignment_Up_to]) / float(
                     len(node_child.alignment_Up_to))
 
@@ -399,7 +341,7 @@ class Node():
                     # node_child.cost_to_final_marking = d
                     node_child.Heuristic_to_Final(elements_tot)
                     node_child.cost_from_init_marking = 1 * sum(
-                        [1 if ((x[0] != '-') and (x[1] != '-' and 'tau' not in x[1])) else 0 for x in
+                        [1 if ((x[0] != '-' and x[0] != '-') or ('tau' in x[1])) else 0 for x in
                          node_child.alignment_Up_to]) / float(
                         len(node_child.alignment_Up_to))
 
@@ -423,7 +365,7 @@ class Node():
                 # node_child.cost_to_final_marking = self.cost_to_final_marking
                 node_child.Heuristic_to_Final(elements_tot)
                 node_child.cost_from_init_marking = 1 * sum(
-                    [1 if (x[0] != '-') and (x[1] != '-' and 'tau' not in x[1]) else 0 for x in
+                    [1 if ((x[0] != '-' and x[0] != '-') or ('tau' in x[1])) else 0 for x in
                      node_child.alignment_Up_to]) / float(
                     len(node_child.alignment_Up_to))
 
