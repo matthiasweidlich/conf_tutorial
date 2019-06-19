@@ -237,7 +237,6 @@ class Astar (Alignment):
                 elif (incident_matrix[i][j] == -1):
                     dot.edge(str(places[i]), str(elements_tot[j].trans_id + "-" + elements_tot[j].trans_type + index))
         # Graphviz must be installed in order to save output in pdf format
-        print ("the net move is figured")
         f = open("./sync_product.dot", "w")
         dot.render("sync_product.png")
         f.write(dot.source)
@@ -245,14 +244,15 @@ class Astar (Alignment):
     def __Fitness(self):
         for sol in self.solutions:
             u = sol.alignment_Up_to
-            self.fitness.append(round(len([e for e in u if (e[0] != '-' and e[1] != '-')]) / len(u), 3))
+            self.fitness.append(round(len([e for e in u if (e[0] != '-' and e[1] != '-' and 'tau' not in e[1])]) / len(u), 3))
     def __Move_alignment(self):
         for sol in self.solutions:
-            self.alignment_move.append(sol.alignment_Up_to)
+            u=sol.alignment_Up_to
+            self.alignment_move.append([e for e in u if ('tau' not in e[1])])
     def __Move_in_model(self):
         for sol in self.solutions:
             u=sol.alignment_Up_to
-            self.move_in_model.append([e[1] for e in u if e[1] != '-'])
+            self.move_in_model.append([e[1] for e in u if (e[1] != '-' and 'tau' not in e[1])])
     def __Move_in_log(self):
         for sol in self.solutions:
             u=sol.alignment_Up_to
@@ -300,7 +300,6 @@ class Astar (Alignment):
 
                     # Graphviz must be installed in order to save output in pdf format
 
-        print ("the net move is figured")
         f = open("./Graph_net_moves_color.dot", "w")
 #        dot.render("plot.png")
         f.write(dot.source)
@@ -364,7 +363,6 @@ class Node():
                 # Creating a new node
                 node_child = Node()
 
-
                 # Updating the current marking for that node by firing trans[i]
                 node_child.marking_vector = self.marking_vector + incidence_matrix[:, i]
                 node_child.parent_node = self
@@ -376,7 +374,7 @@ class Node():
                 # node_child.cost_to_final_marking = d
                 node_child.Heuristic_to_Final()
                 node_child.cost_from_init_marking = 1 * sum(
-                    [1 if ((x[0] != '-') and (x[1] != '-'))  else 0 for x in
+                    [1 if ((x[0] != '-') and (x[1] != '-' and 'tau' not in x[1])) else 0 for x in
                      node_child.alignment_Up_to]) / float(
                     len(node_child.alignment_Up_to))
 
@@ -401,7 +399,7 @@ class Node():
                     # node_child.cost_to_final_marking = d
                     node_child.Heuristic_to_Final()
                     node_child.cost_from_init_marking = 1 * sum(
-                        [1 if ((x[0] != '-') and (x[1] != '-'))  else 0 for x in
+                        [1 if ((x[0] != '-') and (x[1] != '-' and 'tau' not in x[1])) else 0 for x in
                          node_child.alignment_Up_to]) / float(
                         len(node_child.alignment_Up_to))
 
@@ -425,7 +423,7 @@ class Node():
                 # node_child.cost_to_final_marking = self.cost_to_final_marking
                 node_child.Heuristic_to_Final()
                 node_child.cost_from_init_marking = 1 * sum(
-                    [1 if ((x[0] != '-') and (x[1] != '-'))  else 0 for x in
+                    [1 if (x[0] != '-') and (x[1] != '-' and 'tau' not in x[1]) else 0 for x in
                      node_child.alignment_Up_to]) / float(
                     len(node_child.alignment_Up_to))
 
@@ -442,7 +440,10 @@ class Node():
         x[x > 0] = 1
         x[x <= 0] = 0
 
-        self.cost_to_final_marking = 1 / numpy.sum(x)
+        if numpy.sum(x) > 0:
+            self.cost_to_final_marking = 1 / numpy.sum(x)
+        else:
+            self.cost_to_final_marking = 1000
 
     # Deciding whether to add a now node to the open list
     def Add_node(self, open_list, closed_list, node_child, id):
